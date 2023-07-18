@@ -1236,6 +1236,7 @@ struct rq {
 	unsigned char		nohz_idle_balance;
 	unsigned char		idle_balance;
 
+	unsigned long		fits_capacity_threshold;
 	unsigned long		misfit_task_load;
 
 	/* For active balancing */
