@@ -481,6 +481,13 @@ static int user_check_sched_setscheduler(struct task_struct *p,
 	if (p->sched_reset_on_fork && !reset_on_fork)
 		goto req_priv;
 
+	/*
+	 * Normal users can't set QoS on their own, must go via admin
+	 * controlled service
+	 */
+	if (attr->sched_flags & SCHED_FLAG_QOS)
+		goto req_priv;
+
 	return 0;
 
 req_priv:
@@ -551,6 +558,9 @@ recheck:
 		if (retval)
 			return retval;
 	}
+
+	if (attr->sched_flags & SCHED_FLAG_QOS)
+		return -EOPNOTSUPP;
 
 	/*
 	 * SCHED_DEADLINE bandwidth accounting relies on stable cpusets
