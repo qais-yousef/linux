@@ -270,7 +270,7 @@ static void sugov_get_util(struct sugov_cpu *sg_cpu, unsigned long boost)
 {
 	unsigned long min, max, util = cpu_util_cfs_boost(sg_cpu->cpu);
 
-	util = effective_cpu_util(sg_cpu->cpu, util, &min, &max);
+	util = effective_cpu_util(sg_cpu->cpu, util, &min, &max, NULL);
 	util = max(util, boost);
 	sg_cpu->bw_min = min;
 	sg_cpu->util = sugov_effective_cpu_perf(sg_cpu->cpu, util, min, max);
