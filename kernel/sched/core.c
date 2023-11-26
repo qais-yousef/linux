@@ -118,6 +118,7 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(sched_compute_energy_tp);
 
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 DEFINE_PER_CPU_READ_MOSTLY(u64, dvfs_update_delay);
+DEFINE_PER_CPU_READ_MOSTLY(u64, dvfs_update_delay_util);
 
 #ifdef CONFIG_SCHED_DEBUG
 /*
@@ -1463,6 +1464,40 @@ uclamp_tg_restrict(struct task_struct *p, enum uclamp_id clamp_id)
 }
 
 /*
+ * Ignore perf hints if task's runtime is too short for dvfs_update_delay.  The
+ * task must run for an average of dvfs_update_delay_util for it not to be
+ * ignored.
+ *
+ * If we made a wrong decision and the task has changed characteristic such
+ * that it is no longer a short task, we should detect that at tick. Which can
+ * be a high penalty if the tick value is too high.
+ *
+ * XXX: can we take TICK_US into account somehow when verifying if we can
+ * ignore it?
+ *
+ * Only fair tasks are considered now as we use util to approximate its average
+ * runtime. We can't do the same without tracking the average runtime of the RT
+ * task in our accounting. And it might be risky to temporarily ignore the RT
+ * task's perf requirements as a mistake could have higher consequence.
+ * Similarly for DL tasks.
+ *
+ * Once fair gains the concept of latency sensitive tasks, we might need to
+ * consider the consequence of ignoring them here too. For the same reason
+ * ignoring RT tasks is risky.
+ */
+static inline bool ignore_task_perf(struct task_struct *p)
+{
+	unsigned long task_util;
+
+	if (!fair_policy(p->policy))
+		return false;
+
+	task_util = task_util_est(p);
+
+	return task_util < per_cpu(dvfs_update_delay_util, raw_smp_processor_id());
+}
+
+/*
  * The effective clamp bucket index of a task depends on, by increasing
  * priority:
  * - the task specific clamp value, when explicitly requested from userspace
@@ -1485,6 +1520,9 @@ uclamp_eff_get(struct task_struct *p, enum uclamp_id clamp_id)
 
 unsigned long uclamp_eff_value(struct task_struct *p, enum uclamp_id clamp_id)
 {
+	if (ignore_task_perf(p))
+		return uclamp_none(clamp_id);
+
 	/* This should be kept up-to-date whenever uclamp value is changed */
 	return (unsigned long)p->uclamp[clamp_id].value;
 }
@@ -4835,6 +4873,9 @@ static inline void update_cpufreq_ctx_switch(struct rq *rq)
 
 		if (unlikely(current->in_iowait))
 			goto force_update;
+
+		if (ignore_task_perf(current))
+			return;
 
 		/* Force an update if perf hints are required to be applied */
 		uclamp_min = uclamp_eff_value(current, UCLAMP_MIN);

@@ -8,6 +8,12 @@
 
 #define IOWAIT_BOOST_MIN	(SCHED_CAPACITY_SCALE / 8)
 
+/*
+ * Min runtime in us a task should run for above rate_limit_us so that we don't
+ * ignore it in ignore_short_tasks().
+ */
+#define SHORT_TASK_MIN		500
+
 DEFINE_PER_CPU_READ_MOSTLY(unsigned long, response_time_mult);
 
 struct sugov_tunables {
@@ -631,6 +637,7 @@ rate_limit_us_store(struct gov_attr_set *attr_set, const char *buf, size_t count
 {
 	struct sugov_tunables *tunables = to_sugov_tunables(attr_set);
 	struct sugov_policy *sg_policy;
+	unsigned long rate_limit_util;
 	unsigned int rate_limit_us;
 	int cpu;
 
@@ -639,12 +646,16 @@ rate_limit_us_store(struct gov_attr_set *attr_set, const char *buf, size_t count
 
 	tunables->rate_limit_us = rate_limit_us;
 
+	rate_limit_util = approximate_util_avg(0, rate_limit_us + SHORT_TASK_MIN);
+
 	list_for_each_entry(sg_policy, &attr_set->policy_list, tunables_hook) {
 
 		sg_policy->freq_update_delay_ns = rate_limit_us * NSEC_PER_USEC;
 
-		for_each_cpu(cpu, sg_policy->policy->cpus)
+		for_each_cpu(cpu, sg_policy->policy->cpus) {
 			per_cpu(dvfs_update_delay, cpu) = rate_limit_us;
+			per_cpu(dvfs_update_delay_util, cpu) = rate_limit_util;
+		}
 	}
 
 	return count;
@@ -939,6 +950,7 @@ static int sugov_start(struct cpufreq_policy *policy)
 {
 	struct sugov_policy *sg_policy = policy->governor_data;
 	void (*uu)(struct update_util_data *data, u64 time, unsigned int flags);
+	unsigned long rate_limit_util;
 	unsigned int cpu;
 
 	sg_policy->freq_update_delay_ns		= sg_policy->tunables->rate_limit_us * NSEC_PER_USEC;
@@ -957,6 +969,8 @@ static int sugov_start(struct cpufreq_policy *policy)
 	else
 		uu = sugov_update_single_freq;
 
+	rate_limit_util = approximate_util_avg(0, sg_policy->tunables->rate_limit_us + SHORT_TASK_MIN);
+
 	for_each_cpu(cpu, policy->cpus) {
 		struct sugov_cpu *sg_cpu = &per_cpu(sugov_cpu, cpu);
 
@@ -965,6 +979,7 @@ static int sugov_start(struct cpufreq_policy *policy)
 		sg_cpu->sg_policy = sg_policy;
 
 		per_cpu(dvfs_update_delay, cpu) = sg_policy->tunables->rate_limit_us;
+		per_cpu(dvfs_update_delay_util, cpu) = rate_limit_util;
 
 		cpufreq_add_update_util_hook(cpu, &sg_cpu->update_util, uu);
 	}
