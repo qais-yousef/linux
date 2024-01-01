@@ -40,6 +40,8 @@ void cpufreq_add_update_util_hook(int cpu, struct update_util_data *data,
 	if (WARN_ON(per_cpu(cpufreq_update_util_data, cpu)))
 		return;
 
+	static_branch_enable(&cpufreq_update_enabled);
+
 	data->func = func;
 	rcu_assign_pointer(per_cpu(cpufreq_update_util_data, cpu), data);
 }

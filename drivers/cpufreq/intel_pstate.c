@@ -2153,28 +2153,10 @@ static inline void intel_pstate_update_util_hwp_local(struct cpudata *cpu,
 {
 	cpu->sample.time = time;
 
-	if (cpu->sched_flags & SCHED_CPUFREQ_IOWAIT) {
-		bool do_io = false;
-
-		cpu->sched_flags = 0;
-		/*
-		 * Set iowait_boost flag and update time. Since IO WAIT flag
-		 * is set all the time, we can't just conclude that there is
-		 * some IO bound activity is scheduled on this CPU with just
-		 * one occurrence. If we receive at least two in two
-		 * consecutive ticks, then we treat as boost candidate.
-		 */
-		if (time_before64(time, cpu->last_io_update + 2 * TICK_NSEC))
-			do_io = true;
-
-		cpu->last_io_update = time;
-
-		if (do_io)
-			intel_pstate_hwp_boost_up(cpu);
-
-	} else {
+	if (current->iowait_boost)
+		intel_pstate_hwp_boost_up(cpu);
+	else
 		intel_pstate_hwp_boost_down(cpu);
-	}
 }
 
 static inline void intel_pstate_update_util_hwp(struct update_util_data *data,
@@ -2335,25 +2317,8 @@ static void intel_pstate_update_util(struct update_util_data *data, u64 time,
 	if (smp_processor_id() != cpu->cpu)
 		return;
 
-	delta_ns = time - cpu->last_update;
-	if (flags & SCHED_CPUFREQ_IOWAIT) {
-		/* Start over if the CPU may have been idle. */
-		if (delta_ns > TICK_NSEC) {
-			cpu->iowait_boost = ONE_EIGHTH_FP;
-		} else if (cpu->iowait_boost >= ONE_EIGHTH_FP) {
-			cpu->iowait_boost <<= 1;
-			if (cpu->iowait_boost > int_tofp(1))
-				cpu->iowait_boost = int_tofp(1);
-		} else {
-			cpu->iowait_boost = ONE_EIGHTH_FP;
-		}
-	} else if (cpu->iowait_boost) {
-		/* Clear iowait_boost if the CPU may have been idle. */
-		if (delta_ns > TICK_NSEC)
-			cpu->iowait_boost = 0;
-		else
-			cpu->iowait_boost >>= 1;
-	}
+	cpu->iowait_boost = current->iowait_boost;
+
 	cpu->last_update = time;
 	delta_ns = time - cpu->sample.time;
 	if ((s64)delta_ns < INTEL_PSTATE_SAMPLING_INTERVAL)

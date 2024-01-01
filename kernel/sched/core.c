@@ -120,6 +120,8 @@ DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 DEFINE_PER_CPU_READ_MOSTLY(u64, dvfs_update_delay);
 DEFINE_PER_CPU_READ_MOSTLY(u64, dvfs_update_delay_util);
 
+#define IOWAIT_BOOST_MIN	(SCHED_CAPACITY_SCALE / 8)
+
 #ifdef CONFIG_SCHED_DEBUG
 /*
  * Debugging: various feature bits
@@ -153,6 +155,22 @@ __read_mostly int sysctl_resched_latency_warn_once = 1;
 const_debug unsigned int sysctl_sched_nr_migrate = SCHED_NR_MIGRATE_BREAK;
 
 __read_mostly int scheduler_running;
+
+static inline void update_iowait_boost(struct task_struct *p)
+{
+	if (p->in_iowait) {
+		if (!p->iowait_boost)
+			p->iowait_boost = IOWAIT_BOOST_MIN;
+		else
+			p->iowait_boost = min_t(unsigned long, p->iowait_boost << 1, SCHED_CAPACITY_SCALE);
+	} else {
+		if (p->iowait_boost) {
+			p->iowait_boost >>= 1;
+			if (p->iowait_boost < IOWAIT_BOOST_MIN)
+				p->iowait_boost = 0;
+		}
+	}
+}
 
 #ifdef CONFIG_SCHED_CORE
 
@@ -1485,16 +1503,19 @@ uclamp_tg_restrict(struct task_struct *p, enum uclamp_id clamp_id)
  * consider the consequence of ignoring them here too. For the same reason
  * ignoring RT tasks is risky.
  */
+static inline bool __ignore_task_perf(struct task_struct *p)
+{
+	unsigned long task_util = task_util_est(p);
+
+	return task_util < per_cpu(dvfs_update_delay_util, raw_smp_processor_id());
+}
+
 static inline bool ignore_task_perf(struct task_struct *p)
 {
-	unsigned long task_util;
-
 	if (!fair_policy(p->policy))
 		return false;
 
-	task_util = task_util_est(p);
-
-	return task_util < per_cpu(dvfs_update_delay_util, raw_smp_processor_id());
+	return __ignore_task_perf(p);
 }
 
 /*
@@ -1518,13 +1539,27 @@ uclamp_eff_get(struct task_struct *p, enum uclamp_id clamp_id)
 	return uc_req.value;
 }
 
-unsigned long uclamp_eff_value(struct task_struct *p, enum uclamp_id clamp_id)
+static inline unsigned long
+__uclamp_eff_value(struct task_struct *p, enum uclamp_id clamp_id)
 {
 	if (ignore_task_perf(p))
 		return uclamp_none(clamp_id);
 
 	/* This should be kept up-to-date whenever uclamp value is changed */
 	return (unsigned long)p->uclamp[clamp_id].value;
+}
+
+/*
+ * Returns effective min/max perf requirement for a task @p.
+ */
+unsigned long uclamp_eff_value(struct task_struct *p, enum uclamp_id clamp_id)
+{
+	unsigned long val = __uclamp_eff_value(p, clamp_id);
+
+	if (clamp_id == UCLAMP_MIN)
+		val = max(val, p->iowait_boost);
+
+	return val;
 }
 
 /* Update task's p->uclamp_req and effective p->uclamp in one go */
@@ -1829,6 +1864,8 @@ static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 	}
 
 	p->sched_class->enqueue_task(rq, p, flags);
+
+	update_iowait_boost(p);
 
 	if (sched_core_enabled(rq))
 		sched_core_enqueue(rq, p);
@@ -4874,12 +4911,12 @@ static inline void update_cpufreq_ctx_switch(struct rq *rq)
 		if (unlikely(current->in_iowait))
 			goto force_update;
 
-		if (ignore_task_perf(current))
+		if (__ignore_task_perf(current))
 			return;
 
 		/* Force an update if perf hints are required to be applied */
-		uclamp_min = uclamp_eff_value(current, UCLAMP_MIN);
-		uclamp_max = uclamp_eff_value(current, UCLAMP_MAX);
+		uclamp_min = __uclamp_eff_value(current, UCLAMP_MIN);
+		uclamp_max = __uclamp_eff_value(current, UCLAMP_MAX);
 		rq_util = rq->cfs.avg.util_avg;
 
 		if (uclamp_min > rq_util || uclamp_max < rq_util)
@@ -4898,7 +4935,7 @@ force_update:
 	 * Request freq update after __balance_callbacks to take into account
 	 * any changes to rq.
 	 */
-	cpufreq_update_util(rq, current->in_iowait ? SCHED_CPUFREQ_IOWAIT : 0);
+	cpufreq_update_util(rq, 0);
 }
 
 static inline void

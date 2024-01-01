@@ -410,13 +410,6 @@ where ``util`` is the PELT number, ``max`` is the theoretical maximum of
 policy (if the PELT number is frequency-invariant), or the current CPU frequency
 (otherwise).
 
-This governor also employs a mechanism allowing it to temporarily bump up the
-CPU frequency for tasks that have been waiting on I/O most recently, called
-"IO-wait boosting".  That happens when the :c:macro:`SCHED_CPUFREQ_IOWAIT` flag
-is passed by the scheduler to the governor callback which causes the frequency
-to go up to the allowed maximum immediately and then draw back to the value
-returned by the above formula over time.
-
 This governor exposes two tunables:
 
 ``rate_limit_us``
