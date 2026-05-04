@@ -6006,12 +6006,14 @@ static inline unsigned long task_util_dequeued(struct task_struct *p);
 
 static inline void util_est_update(struct sched_entity *se, bool running)
 {
-	unsigned long rampup_multiplier = READ_ONCE(sysctl_sched_qos_default_rampup_multiplier);
 	unsigned int ewma, dequeued, last_ewma_diff;
 	struct task_struct *p = task_of(se);
+	unsigned long rampup_multiplier;
 
 	if (!sched_feat(UTIL_EST))
 		return;
+
+	rampup_multiplier = READ_ONCE(p->sched_qos.rampup_multiplier);
 
 	/*
 	 * rampup_multiplier = 0 indicates util_est is disabled.

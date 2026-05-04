@@ -4903,6 +4903,22 @@ static int __init sched_core_sysctl_init(void)
 late_initcall(sched_core_sysctl_init);
 #endif /* CONFIG_SYSCTL */
 
+static void sched_qos_fork(struct task_struct *p)
+{
+	/*
+	 * We always force reset sched_qos on fork. These sched_qos are treated
+	 * as finite resources to help improve quality of life. Inheriting them
+	 * by default can easily lead to a situation where the QoS hint become
+	 * meaningless because all tasks in the system have it.
+	 *
+	 * Every task must request the QoS explicitly if it needs it. No
+	 * accidental inheritance is allowed to keep the default behavior sane.
+	 */
+	bitmap_zero(p->sched_qos.user_defined, SCHED_QOS_MAX);
+	WRITE_ONCE(p->sched_qos.rampup_multiplier,
+		   READ_ONCE(sysctl_sched_qos_default_rampup_multiplier));
+}
+
 /*
  * fork()/clone()-time setup:
  */
@@ -4922,6 +4938,7 @@ int sched_fork(u64 clone_flags, struct task_struct *p)
 	p->prio = current->normal_prio;
 
 	uclamp_fork(p);
+	sched_qos_fork(p);
 
 	/*
 	 * Revert to default priority/policy on fork if requested.

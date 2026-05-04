@@ -42,3 +42,25 @@ need for extension will arise; and when this happens the task should be
 simpler to add the kernel extension and allow userspace to use readily by
 setting the newly added flag without having to update the whole of
 sched_attr.
+
+2. QoS Tags
+===========
+
+SCHED_QOS_RAMPUP_MULTIPLIER
+---------------------------
+
+Controls how fast util signal rises. Affects frequency selection when schedutil
+is in use. And affects how fast tasks migrate between clusters on HMP systems.
+
+It affects bursty tasks only. Perfectly periodic tasks are well described by
+util_avg and the rampup multiplier will have no effect on them.
+
+When set to 0, util_est will be disabled to help further with power saving.
+This behavior can be controlled via UTIL_EST_RAMPUP_ZERO sched_feature.
+
+Value is not capped to retain flexibility, but it tapers off quickly enough
+that there is little difference above 16. Roughly it takes ~200ms to reach a util_avg of
+1000 starting from 0. With 16 it should take ~12.5ms. A range of 0-8 is
+advised for general use.
+
+Cookie must always be set to 0.

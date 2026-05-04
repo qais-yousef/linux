@@ -734,6 +734,48 @@ static __init void debugfs_cpu_init(void)
 	}
 }
 
+static void sched_qos_sync_rampup_multiplier(void)
+{
+	unsigned int val = READ_ONCE(sysctl_sched_qos_default_rampup_multiplier);
+	struct task_struct *g, *p;
+
+	guard(rcu)();
+	for_each_process_thread(g, p) {
+		struct rq_flags rf;
+		struct rq *rq;
+
+		rq = task_rq_lock(p, &rf);
+		if (!test_bit(SCHED_QOS_RAMPUP_MULTIPLIER, p->sched_qos.user_defined))
+			WRITE_ONCE(p->sched_qos.rampup_multiplier, val);
+		task_rq_unlock(rq, p, &rf);
+	}
+}
+
+static int sched_rampup_multiplier_get(void *data, u64 *val)
+{
+	*val = READ_ONCE(sysctl_sched_qos_default_rampup_multiplier);
+	return 0;
+}
+
+static int sched_rampup_multiplier_set(void *data, u64 val)
+{
+	if (val > U32_MAX)
+		return -EINVAL;
+
+	if (val == READ_ONCE(sysctl_sched_qos_default_rampup_multiplier))
+		return 0;
+
+	WRITE_ONCE(sysctl_sched_qos_default_rampup_multiplier, (unsigned int)val);
+	sched_qos_sync_rampup_multiplier();
+
+	return 0;
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(sched_rampup_multiplier_fops,
+			 sched_rampup_multiplier_get,
+			 sched_rampup_multiplier_set,
+			 "%llu\n");
+
 static __init int sched_init_debug(void)
 {
 	struct dentry __maybe_unused *numa, *llc, *fct;
@@ -756,7 +798,7 @@ static __init int sched_init_debug(void)
 	debugfs_create_u32("migration_cost_ns", 0644, debugfs_sched, &sysctl_sched_migration_cost);
 	debugfs_create_u32("nr_migrate", 0644, debugfs_sched, &sysctl_sched_nr_migrate);
 
-	debugfs_create_u32("rampup_multiplier", 0644, debugfs_sched, &sysctl_sched_qos_default_rampup_multiplier);
+	debugfs_create_file("rampup_multiplier", 0644, debugfs_sched, NULL, &sched_rampup_multiplier_fops);
 
 	sched_domains_mutex_lock();
 	update_sched_domain_debugfs();
@@ -1517,6 +1559,7 @@ void proc_sched_show_task(struct task_struct *p, struct pid_namespace *ns,
 	__PS("effective uclamp.min", uclamp_eff_value(p, UCLAMP_MIN));
 	__PS("effective uclamp.max", uclamp_eff_value(p, UCLAMP_MAX));
 #endif /* CONFIG_UCLAMP_TASK */
+	__PS("sched_qos.rampup_multiplier", p->sched_qos.rampup_multiplier);
 	P(policy);
 	P(prio);
 	if (task_has_dl_policy(p)) {

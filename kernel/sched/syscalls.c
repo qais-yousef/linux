@@ -415,6 +415,40 @@ static void __setscheduler_uclamp(struct task_struct *p,
 				  const struct sched_attr *attr) { }
 #endif /* !CONFIG_UCLAMP_TASK */
 
+static inline int sched_qos_validate(struct task_struct *p,
+				     const struct sched_attr *attr)
+{
+	switch (attr->sched_qos_type) {
+	case SCHED_QOS_RAMPUP_MULTIPLIER:
+		if (attr->sched_qos_cookie)
+			return -EINVAL;
+		if (attr->sched_qos_value < 0 || attr->sched_qos_value > U32_MAX)
+			return -EINVAL;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static void __setscheduler_sched_qos(struct task_struct *p,
+				     const struct sched_attr *attr)
+{
+	if ((attr->sched_flags & SCHED_FLAG_QOS) == 0)
+		return;
+
+	switch (attr->sched_qos_type) {
+	case SCHED_QOS_RAMPUP_MULTIPLIER:
+		set_bit(SCHED_QOS_RAMPUP_MULTIPLIER, p->sched_qos.user_defined);
+		WRITE_ONCE(p->sched_qos.rampup_multiplier,
+			   (unsigned int)attr->sched_qos_value);
+		break;
+	default:
+		break;
+	}
+}
+
 /*
  * Allow unprivileged RT tasks to decrease priority.
  * Only issue a capable test if needed and only once to avoid an audit
@@ -579,8 +613,11 @@ recheck:
 			return retval;
 	}
 
-	if (attr->sched_flags & SCHED_FLAG_QOS)
-		return -EOPNOTSUPP;
+	if (attr->sched_flags & SCHED_FLAG_QOS) {
+		retval = sched_qos_validate(p, attr);
+		if (retval)
+			return retval;
+	}
 
 	/*
 	 * SCHED_DEADLINE bandwidth accounting relies on stable cpusets
@@ -719,6 +756,7 @@ change:
 			__setscheduler_dl_pi(newprio, policy, p, scope);
 		}
 		__setscheduler_uclamp(p, attr);
+		__setscheduler_sched_qos(p, attr);
 
 		if (scope->queued) {
 			/*
@@ -1104,6 +1142,13 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
 		     usize < SCHED_ATTR_SIZE_VER0))
 		return -EINVAL;
 
+	if (usize >= SCHED_ATTR_SIZE_VER2) {
+		if (copy_from_user(&kattr.sched_qos_type,
+				   &uattr->sched_qos_type,
+				   sizeof(kattr.sched_qos_type)))
+			return -EFAULT;
+	}
+
 	scoped_guard (rcu) {
 		p = find_process_by_pid(pid);
 		if (!p)
@@ -1134,6 +1179,16 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
 		kattr.sched_util_min = p->uclamp_req[UCLAMP_MIN].value;
 		kattr.sched_util_max = p->uclamp_req[UCLAMP_MAX].value;
 #endif
+		switch (kattr.sched_qos_type) {
+		case SCHED_QOS_NONE:
+			break;
+		case SCHED_QOS_RAMPUP_MULTIPLIER:
+			kattr.sched_qos_value = READ_ONCE(p->sched_qos.rampup_multiplier);
+			kattr.sched_qos_cookie = 0;
+			break;
+		default:
+			return -EINVAL;
+		}
 	}
 
 	kattr.size = min(usize, sizeof(kattr));
