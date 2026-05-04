@@ -5980,6 +5980,9 @@ static void detach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 
 #define UTIL_EST_MARGIN (SCHED_CAPACITY_SCALE / 100)
 
+static inline unsigned long task_util(struct task_struct *p);
+static inline unsigned long task_util_dequeued(struct task_struct *p);
+
 static inline void util_est_update(struct sched_entity *se, bool running)
 {
 	unsigned int ewma, dequeued, last_ewma_diff;
@@ -5997,18 +6000,22 @@ static inline void util_est_update(struct sched_entity *se, bool running)
 	 * quickly to settle down to our new util_avg.
 	 */
 	if (running) {
-		u64 delta = p->se.delta_exec;
-		unsigned int prev_ewma = ewma & ~UTIL_AVG_UNCHANGED;
+		if (task_util(p) > task_util_dequeued(p) &&
+		    task_util(p) - task_util_dequeued(p) > UTIL_EST_MARGIN) {
+			u64 delta = p->se.delta_exec;
+			unsigned int prev_ewma = ewma & ~UTIL_AVG_UNCHANGED;
 
-		do_div(delta, 1000);
-		ewma = approximate_util_avg(prev_ewma, delta);
-		/*
-		 * Keep accumulating delta_exec if it is too small to cause
-		 * a change.
-		 */
-		if (ewma != prev_ewma)
-			p->se.delta_exec = 0;
-		goto done_running;
+			do_div(delta, 1000);
+			ewma = approximate_util_avg(prev_ewma, delta);
+			/*
+			 * Keep accumulating delta_exec if it is too small to cause
+			 * a change.
+			 */
+			if (ewma != prev_ewma)
+				p->se.delta_exec = 0;
+			goto done_running;
+		}
+		return;
 	} else {
 		p->se.delta_exec = 0;
 	}
@@ -6022,6 +6029,9 @@ static inline void util_est_update(struct sched_entity *se, bool running)
 
 	/* Get utilization at dequeue */
 	dequeued = READ_ONCE(se->avg.util_avg);
+
+	if (!task_on_rq_migrating(p))
+		p->util_avg_dequeued = dequeued;
 
 	/*
 	 * Reset EWMA on utilization increases, the moving average is used only
@@ -6183,6 +6193,11 @@ static int sched_balance_newidle(struct rq *this_rq, struct rq_flags *rf)
 static inline unsigned long task_util(struct task_struct *p)
 {
 	return READ_ONCE(p->se.avg.util_avg);
+}
+
+static inline unsigned long task_util_dequeued(struct task_struct *p)
+{
+	return READ_ONCE(p->util_avg_dequeued);
 }
 
 static inline unsigned long _task_util_est(struct task_struct *p)
