@@ -87,6 +87,8 @@ static unsigned int normalized_sysctl_sched_base_slice	= 700000ULL;
 
 __read_mostly unsigned int sysctl_sched_migration_cost	= 500000UL;
 
+__read_mostly unsigned int sysctl_sched_qos_default_rampup_multiplier	= 4;
+
 static int __init setup_sched_thermal_decay_shift(char *str)
 {
 	pr_warn("Ignoring the deprecated sched_thermal_decay_shift= option\n");
@@ -5985,6 +5987,7 @@ static inline unsigned long task_util_dequeued(struct task_struct *p);
 
 static inline void util_est_update(struct sched_entity *se, bool running)
 {
+	unsigned long rampup_multiplier = READ_ONCE(sysctl_sched_qos_default_rampup_multiplier);
 	unsigned int ewma, dequeued, last_ewma_diff;
 	struct task_struct *p = task_of(se);
 
@@ -6006,7 +6009,7 @@ static inline void util_est_update(struct sched_entity *se, bool running)
 			unsigned int prev_ewma = ewma & ~UTIL_AVG_UNCHANGED;
 
 			do_div(delta, 1000);
-			ewma = approximate_util_avg(prev_ewma, delta);
+			ewma = approximate_util_avg(prev_ewma, delta * rampup_multiplier);
 			/*
 			 * Keep accumulating delta_exec if it is too small to cause
 			 * a change.
@@ -6074,6 +6077,8 @@ static inline void util_est_update(struct sched_entity *se, bool running)
 	 * 0.25, thus making w=1/4 ( >>= UTIL_EST_WEIGHT_SHIFT)
 	 */
 	ewma <<= UTIL_EST_WEIGHT_SHIFT;
+	if (rampup_multiplier)
+		last_ewma_diff /= rampup_multiplier;
 	ewma  -= last_ewma_diff;
 	ewma >>= UTIL_EST_WEIGHT_SHIFT;
 done:

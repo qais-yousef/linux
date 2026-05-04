@@ -3270,6 +3270,7 @@ static inline void __attach_tasks(struct rq *rq, struct list_head *tasks)
 
 extern __read_mostly unsigned int sysctl_sched_nr_migrate;
 extern __read_mostly unsigned int sysctl_sched_migration_cost;
+extern __read_mostly unsigned int sysctl_sched_qos_default_rampup_multiplier;
 
 extern unsigned int sysctl_sched_base_slice;
 
