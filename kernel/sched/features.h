@@ -135,6 +135,11 @@ SCHED_FEAT(WA_BIAS, true)
  */
 SCHED_FEAT(UTIL_EST, true)
 
+/*
+ * Disable util_est when rampup_multiplier is 0.
+ */
+SCHED_FEAT(UTIL_EST_RAMPUP_ZERO, true)
+
 SCHED_FEAT(LATENCY_WARN, false)
 
 /*

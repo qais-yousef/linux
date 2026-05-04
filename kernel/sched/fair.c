@@ -5994,6 +5994,14 @@ static inline void util_est_update(struct sched_entity *se, bool running)
 	if (!sched_feat(UTIL_EST))
 		return;
 
+	/*
+	 * rampup_multiplier = 0 indicates util_est is disabled.
+	 */
+	if (sched_feat(UTIL_EST_RAMPUP_ZERO) && !rampup_multiplier) {
+		ewma = 0;
+		goto done;
+	}
+
 	/* Get current estimate of utilization */
 	ewma = READ_ONCE(se->avg.util_est);
 
