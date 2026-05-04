@@ -142,3 +142,9 @@ SCHED_FEAT(LATENCY_WARN, false)
  */
 SCHED_FEAT(NI_RANDOM, true)
 SCHED_FEAT(NI_RATE, true)
+
+/*
+ * For backward compatibility. Use the constant 1.25 dvfs headroom in
+ * schedutil instead of the dynamic one.
+ */
+SCHED_FEAT(CONST_DVFS_HEADROOM, false)
