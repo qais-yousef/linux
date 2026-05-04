@@ -112,6 +112,11 @@ struct clone_args {
 	__aligned_u64 set_tid_size;
 	__aligned_u64 cgroup;
 };
+
+enum sched_qos_type {
+	SCHED_QOS_NONE,
+	SCHED_QOS_MAX,
+};
 #endif
 
 #define CLONE_ARGS_SIZE_VER0 64 /* sizeof first published struct */
@@ -143,6 +148,7 @@ struct clone_args {
 #define SCHED_FLAG_KEEP_PARAMS		0x10
 #define SCHED_FLAG_UTIL_CLAMP_MIN	0x20
 #define SCHED_FLAG_UTIL_CLAMP_MAX	0x40
+#define SCHED_FLAG_QOS			0x80
 
 #define SCHED_FLAG_KEEP_ALL	(SCHED_FLAG_KEEP_POLICY | \
 				 SCHED_FLAG_KEEP_PARAMS)

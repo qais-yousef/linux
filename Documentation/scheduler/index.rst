@@ -25,5 +25,6 @@ Scheduler
     sched-debug
     sched-paravirt
     sched-preemption
+    sched-qos
 
     text_files
