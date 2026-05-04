@@ -1385,6 +1385,7 @@ static s64 update_se(struct rq *rq, struct sched_entity *se)
 		 */
 		running->se.exec_start = now;
 		running->se.sum_exec_runtime += delta_exec;
+		running->se.delta_exec += delta_exec;
 
 		trace_sched_stat_runtime(running, delta_exec);
 		account_group_exec_runtime(running, delta_exec);
@@ -1403,7 +1404,6 @@ static s64 update_se(struct rq *rq, struct sched_entity *se)
 		__schedstat_set(stats->exec_max,
 				max(delta_exec, stats->exec_max));
 	}
-
 	return delta_exec;
 }
 
@@ -5980,15 +5980,38 @@ static void detach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 
 #define UTIL_EST_MARGIN (SCHED_CAPACITY_SCALE / 100)
 
-static inline void util_est_update(struct sched_entity *se)
+static inline void util_est_update(struct sched_entity *se, bool running)
 {
 	unsigned int ewma, dequeued, last_ewma_diff;
+	struct task_struct *p = task_of(se);
 
 	if (!sched_feat(UTIL_EST))
 		return;
 
 	/* Get current estimate of utilization */
 	ewma = READ_ONCE(se->avg.util_est);
+
+	/*
+	 * If a task is running, update util_est ignoring utilization
+	 * invariance so that if the task suddenly becomes busy we will rampup
+	 * quickly to settle down to our new util_avg.
+	 */
+	if (running) {
+		u64 delta = p->se.delta_exec;
+		unsigned int prev_ewma = ewma & ~UTIL_AVG_UNCHANGED;
+
+		do_div(delta, 1000);
+		ewma = approximate_util_avg(prev_ewma, delta);
+		/*
+		 * Keep accumulating delta_exec if it is too small to cause
+		 * a change.
+		 */
+		if (ewma != prev_ewma)
+			p->se.delta_exec = 0;
+		goto done_running;
+	} else {
+		p->se.delta_exec = 0;
+	}
 
 	/*
 	 * If the PELT values haven't changed since enqueue time,
@@ -6045,6 +6068,7 @@ static inline void util_est_update(struct sched_entity *se)
 	ewma >>= UTIL_EST_WEIGHT_SHIFT;
 done:
 	ewma |= UTIL_AVG_UNCHANGED;
+done_running:
 	WRITE_ONCE(se->avg.util_est, ewma);
 
 	trace_sched_util_est_se_tp(se);
@@ -6102,7 +6126,7 @@ static inline void update_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 	}
 
 	if (flags & UPDATE_UTIL_EST)
-		util_est_update(se);
+		util_est_update(se, false);
 }
 
 /*
@@ -6201,6 +6225,14 @@ static inline void util_est_dequeue(struct cfs_rq *cfs_rq,
 	WRITE_ONCE(cfs_rq->avg.util_est, enqueued);
 
 	trace_sched_util_est_cfs_tp(cfs_rq);
+}
+
+static inline void util_est_update_running(struct cfs_rq *cfs_rq,
+					   struct task_struct *p)
+{
+	util_est_dequeue(cfs_rq, p);
+	util_est_update(&p->se, true);
+	util_est_enqueue(cfs_rq, p);
 }
 
 static inline unsigned long get_actual_cpu_capacity(int cpu)
@@ -10421,8 +10453,11 @@ static void put_prev_task_fair(struct rq *rq, struct task_struct *prev, struct t
 	se = &prev->se;
 	WARN_ON_ONCE(cfs_rq->curr != se);
 	cfs_rq->curr = NULL;
-	if (se->on_rq)
+	if (se->on_rq) {
 		__enqueue_entity(cfs_rq, se);
+		if (!se->sched_delayed)
+			util_est_update_running(cfs_rq, prev);
+	}
 }
 
 /*
@@ -15400,6 +15435,8 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int hrtick)
 				update_cfs_rq_h_load(group_cfs_rq(se), se, cfs_rq);
 		}
 	}
+
+	util_est_update_running(&rq->cfs, curr);
 
 	if (hrtick)
 		return;
