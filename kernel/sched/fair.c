@@ -1303,6 +1303,19 @@ void init_entity_runnable_average(struct sched_entity *se)
 }
 
 /*
+ * When util_est is used, the tasks can rampup much faster by default. And with
+ * the rampup_multiplier, tasks can ask for faster rampup after fork. And with
+ * uclamp, they can ensure a min perf requirement. Given all these factors, we
+ * keep util_avg at 0 as we can't crystal ball the task demand after fork.
+ * Userspace have enough ways to ensure good perf for tasks after fork. Keeping
+ * the util_avg to 0 is good way to ensure a uniform start for all tasks. And
+ * it is good to preserve precious resources. Truly busy forked tasks can
+ * compete for the resources without the need for initial 'cheat' to ramp them
+ * up automagically.
+ *
+ * When util_est is not present, the extrapolation logic below will still
+ * apply.
+ *
  * With new tasks being created, their initial util_avgs are extrapolated
  * based on the cfs_rq's current util_avg:
  *
@@ -1351,6 +1364,12 @@ void post_init_entity_util_avg(struct task_struct *p)
 		se->avg.last_update_time = cfs_rq_clock_pelt(cfs_rq);
 		return;
 	}
+
+	/*
+	 * Tasks can rampup faster with util_est, so don't mess with util_avg.
+	 */
+	if (sched_feat(UTIL_EST) && !sched_feat(UTIL_EST_FORCE_POST_INIT))
+		return;
 
 	if (cap > 0) {
 		if (cfs_rq->avg.util_avg != 0) {

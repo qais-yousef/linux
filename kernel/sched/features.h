@@ -140,6 +140,16 @@ SCHED_FEAT(UTIL_EST, true)
  */
 SCHED_FEAT(UTIL_EST_RAMPUP_ZERO, true)
 
+/*
+ * Force extrapolating util_avg on fork.
+ *
+ * When util_est is enabled the extrapolation is not necessary since tasks can
+ * rampup faster and can be controlled with a rampup multiplier to get better
+ * responses making the need for the extrapolation moot. Switch this on to
+ * force the extrapolation logic.
+ */
+SCHED_FEAT(UTIL_EST_FORCE_POST_INIT, false)
+
 SCHED_FEAT(LATENCY_WARN, false)
 
 /*
