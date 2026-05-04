@@ -1324,6 +1324,7 @@ struct rq {
 	unsigned char		nohz_idle_balance;
 	unsigned char		idle_balance;
 
+	unsigned long		fits_capacity_threshold;
 	unsigned long		misfit_task_load;
 
 	/* For active balancing */
@@ -3779,6 +3780,31 @@ unsigned long sugov_effective_cpu_perf(int cpu, unsigned long actual,
 
 unsigned long approximate_util_avg(unsigned long util, u64 delta);
 u64 approximate_runtime(unsigned long util);
+
+static inline void update_fits_capacity_threshold(int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+	u64 limit;
+
+	/*
+	 * Calculate the util at which the task must be considered a misfit.
+	 *
+	 * We must ensure that a task experiences the same ramp-up time to
+	 * reach max performance point of the system regardless of the CPU it
+	 * is running on (due to invariance, time will stretch and task will
+	 * take longer to achieve the same util value compared to a task
+	 * running on a big CPU) and a delay in misfit migration which depends
+	 * on TICK doesn't end up hurting it as it can happen after we would
+	 * have crossed this threshold.
+	 *
+	 * If capacity is too small that limit is less than TICK_USEC, this is
+	 * bad configuration and we'd have to skip this CPU always from
+	 * performance point of view.
+	 */
+	limit = approximate_runtime(arch_scale_cpu_capacity(cpu));
+	limit = limit > TICK_USEC ? limit - TICK_USEC : 0;
+	rq->fits_capacity_threshold = approximate_util_avg(0, limit);
+}
 
 /*
  * Verify the fitness of task @p to run on @cpu taking into account the

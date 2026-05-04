@@ -736,7 +736,8 @@ static __init void debugfs_cpu_init(void)
 
 static __init int sched_init_debug(void)
 {
-	struct dentry __maybe_unused *numa, *llc;
+	struct dentry __maybe_unused *numa, *llc, *fct;
+	int cpu;
 
 	debugfs_sched = debugfs_create_dir("sched", NULL);
 
@@ -784,6 +785,13 @@ static __init int sched_init_debug(void)
 	debugfs_create_u32("imb_pct", 0644, llc,
 			   &llc_imb_pct);
 #endif
+
+	fct = debugfs_create_dir("fits_capacity_threshold", debugfs_sched);
+	for_each_possible_cpu(cpu) {
+		char name[16] = {};
+		sprintf(name, "cpu%d", cpu);
+		debugfs_create_ulong(name, 0644, fct, &cpu_rq(cpu)->fits_capacity_threshold);
+	}
 
 	debugfs_create_file("debug", 0444, debugfs_sched, NULL, &sched_debug_fops);
 

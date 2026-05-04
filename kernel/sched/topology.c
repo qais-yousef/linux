@@ -842,6 +842,7 @@ cpu_attach_domain(struct sched_domain *sd, struct root_domain *rd, int cpu)
 	destroy_sched_domains(tmp);
 
 	update_top_cache_domain(cpu);
+	update_fits_capacity_threshold(cpu);
 }
 
 struct s_data {
