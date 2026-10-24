@@ -3704,6 +3704,7 @@ static inline unsigned long cpu_util_rt(struct rq *rq)
 #ifdef CONFIG_UCLAMP_TASK
 
 unsigned long uclamp_eff_value(struct task_struct *p, enum uclamp_id clamp_id);
+void init_uclamp_rq(struct rq *rq);
 
 /*
  * When uclamp is compiled in, the aggregation at rq level is 'turned off'
@@ -3801,6 +3802,8 @@ uclamp_eff_value(struct task_struct *p, enum uclamp_id clamp_id)
 
 	return SCHED_CAPACITY_SCALE;
 }
+
+static inline void init_uclamp_rq(struct rq *rq) {}
 
 static inline bool uclamp_rq_is_capped(struct rq *rq) { return false; }
 
