@@ -872,8 +872,6 @@ struct rt_rq {
 	bool			overloaded;
 	struct plist_head	pushable_tasks;
 
-	int			rt_queued;
-
 #ifdef CONFIG_RT_GROUP_SCHED
 	int			rt_throttled;
 	u64			rt_time; /* consumed RT time, goes up in update_curr_rt */
@@ -892,7 +890,7 @@ struct rt_rq {
 
 static inline bool rt_rq_is_runnable(struct rt_rq *rt_rq)
 {
-	return rt_rq->rt_queued && rt_rq->rt_nr_running;
+	return rt_rq->rt_nr_running;
 }
 
 /* Deadline class' related fields in a runqueue */
@@ -2918,7 +2916,7 @@ static inline bool sched_dl_runnable(struct rq *rq)
 
 static inline bool sched_rt_runnable(struct rq *rq)
 {
-	return rq->rt.rt_queued > 0;
+	return rt_rq_is_runnable(&rq->rt);
 }
 
 static inline bool sched_fair_runnable(struct rq *rq)
