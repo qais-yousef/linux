@@ -1132,8 +1132,12 @@ void inc_rt_tasks(struct sched_rt_entity *rt_se, struct rt_rq *rt_rq)
 	inc_rt_prio(rt_rq, prio);
 	inc_rt_group(rt_se, rt_rq);
 
-	if (!group_rt_rq(rt_se))
-		add_nr_running(rq_of_rt_rq(rt_rq), 1);
+	if (!group_rt_rq(rt_se)) {
+		struct rq *rq = rq_of_rt_rq(rt_rq);
+
+		add_nr_running(rq, 1);
+		uclamp_rq_inc(rq, rt_task_of(rt_se));
+	}
 }
 
 static inline
@@ -1147,8 +1151,12 @@ void dec_rt_tasks(struct sched_rt_entity *rt_se, struct rt_rq *rt_rq)
 	dec_rt_prio(rt_rq, rt_se_prio(rt_se));
 	dec_rt_group(rt_se, rt_rq);
 
-	if (!group_rt_rq(rt_se))
-		sub_nr_running(rq_of_rt_rq(rt_rq), 1);
+	if (!group_rt_rq(rt_se)) {
+		struct rq *rq = rq_of_rt_rq(rt_rq);
+
+		sub_nr_running(rq, 1);
+		uclamp_rq_dec(rq, rt_task_of(rt_se));
+	}
 }
 
 /*
@@ -2577,10 +2585,6 @@ DEFINE_SCHED_CLASS(rt) = {
 
 #ifdef CONFIG_SCHED_CORE
 	.task_is_throttled	= task_is_throttled_rt,
-#endif
-
-#ifdef CONFIG_UCLAMP_TASK
-	.uclamp_enabled		= 1,
 #endif
 };
 

@@ -8210,6 +8210,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	/* At this point se is NULL and we are at root level*/
 	add_nr_running(rq, 1);
+	uclamp_rq_inc(rq, p);
 
 	/*
 	 * Since new tasks are assigned an initial util_avg equal to
@@ -8328,6 +8329,7 @@ static bool __dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 		__dequeue_entity(cfs_rq, se);
 
 	sub_nr_running(rq, 1);
+	uclamp_rq_dec(rq, p);
 
 	/* balance early to pull high priority tasks */
 	if (unlikely(!was_sched_idle && sched_idle_rq(rq)))
@@ -15885,10 +15887,6 @@ DEFINE_SCHED_CLASS(fair) = {
 
 #ifdef CONFIG_SCHED_CORE
 	.task_is_throttled	= task_is_throttled_fair,
-#endif
-
-#ifdef CONFIG_UCLAMP_TASK
-	.uclamp_enabled		= 1,
 #endif
 };
 

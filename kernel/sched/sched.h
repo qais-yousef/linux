@@ -2650,10 +2650,6 @@ enum snt_e {
 
 struct sched_class {
 
-#ifdef CONFIG_UCLAMP_TASK
-	int uclamp_enabled;
-#endif
-
 	/*
 	 * move_queued_task/activate_task/enqueue_task: rq->lock
 	 * ttwu_do_activate/activate_task/enqueue_task: rq->lock
@@ -3703,6 +3699,8 @@ static inline unsigned long cpu_util_rt(struct rq *rq)
 
 unsigned long uclamp_eff_value(struct task_struct *p, enum uclamp_id clamp_id);
 void init_uclamp_rq(struct rq *rq);
+void uclamp_rq_inc(struct rq *rq, struct task_struct *p);
+void uclamp_rq_dec(struct rq *rq, struct task_struct *p);
 
 /*
  * When uclamp is compiled in, the aggregation at rq level is 'turned off'
@@ -3812,6 +3810,8 @@ uclamp_eff_value(struct task_struct *p, enum uclamp_id clamp_id)
 }
 
 static inline void init_uclamp_rq(struct rq *rq) {}
+static inline void uclamp_rq_inc(struct rq *rq, struct task_struct *p) {}
+static inline void uclamp_rq_dec(struct rq *rq, struct task_struct *p) {}
 
 static inline bool uclamp_rq_is_capped(struct rq *rq) { return false; }
 

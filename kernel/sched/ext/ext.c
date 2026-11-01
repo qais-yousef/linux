@@ -2174,6 +2174,7 @@ static void enqueue_task_scx(struct rq *rq, struct task_struct *p, int core_enq_
 	p->scx.flags |= SCX_TASK_QUEUED;
 	rq->scx.nr_running++;
 	add_nr_running(rq, 1);
+	uclamp_rq_inc(rq, p);
 
 	if (SCX_HAS_OP(sch, runnable) && !task_on_rq_migrating(p))
 		SCX_CALL_OP_TASK(sch, runnable, rq, p, enq_flags);
@@ -2319,6 +2320,7 @@ static bool dequeue_task_scx(struct rq *rq, struct task_struct *p, int core_deq_
 	p->scx.flags &= ~SCX_TASK_QUEUED;
 	rq->scx.nr_running--;
 	sub_nr_running(rq, 1);
+	uclamp_rq_dec(rq, p);
 
 	scx_dispatch_dequeue(rq, p);
 
@@ -5068,10 +5070,6 @@ DEFINE_SCHED_CLASS(ext) = {
 	.prio_changed		= prio_changed_scx,
 
 	.update_curr		= update_curr_scx,
-
-#ifdef CONFIG_UCLAMP_TASK
-	.uclamp_enabled		= 1,
-#endif
 };
 
 s32 scx_init_dsq(struct scx_dispatch_q *dsq, u64 dsq_id, struct scx_sched *sch)
