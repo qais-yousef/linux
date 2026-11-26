@@ -9493,16 +9493,6 @@ cpu_util(int cpu, struct task_struct *p, int dst_cpu, int boost)
 	else if (sub_task)
 		lsub_positive(&util, task_util(p));
 
-	if (boost) {
-		runnable = READ_ONCE(cfs_rq->avg.runnable_avg);
-		if (add_task)
-			runnable += READ_ONCE(p->se.avg.runnable_avg);
-		else if (sub_task)
-			lsub_positive(&runnable,
-				      READ_ONCE(p->se.avg.runnable_avg));
-		util = max(util, runnable);
-	}
-
 	if (sched_feat(UTIL_EST)) {
 		unsigned long util_est;
 
